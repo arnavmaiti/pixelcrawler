@@ -1,0 +1,11 @@
+{
+  "name": "pixelcrawler",
+  "version": "1.0.0",
+  "description": "Pixelmon Wiki Crawler and Search Provider",
+  "main": "app.js",
+  "scripts": {
+    "test": "node test"
+  },
+  "author": "Arnav Maiti",
+  "license": "MIT"
+}
