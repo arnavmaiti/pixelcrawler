@@ -7,5 +7,14 @@
     "test": "node test"
   },
   "author": "Arnav Maiti",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^2.4.2",
+    "cheerio": "^1.0.0-rc.3",
+    "express": "^4.17.1",
+    "neo4j-driver": "^1.7.6",
+    "request": "^2.88.0",
+    "request-promise": "^4.2.4",
+    "socket.io": "^2.3.0"
+  }
 }
