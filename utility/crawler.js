@@ -62,10 +62,96 @@ async function doRequests(socket) {
     "message": msg
   });
   // Now run through each of the pixelmon page the parse them to get the details.
-  for (var i = 0; i < 100; i++) {
-    response = await(pixelmons[i].link);
+  for (var i = 620; i < 622; i++) {
+    response = await rp(pixelmons[i].link);
     $ = cheerio.load(response);
+    var pokemon = {};
     // Get the information about the pokemons and store it.
+    // Right table
+    var stats = $($("table")[1]).find("td");
+    for (var j = 2; j < stats.length; j+=3) {
+      let data = $($(stats)[j]).text().trim();
+      data = data.replace(/[\n#]+/g, "~");
+      switch (j) {
+        case 2:
+          pokemon.name = data;
+          break;
+        case 5:
+          pokemon.id = parseInt(data.replace("~", ""));
+          break;
+        case 8:
+          pokemon.type = data.split("~ ");
+          break;
+        case 11:
+          pokemon.catchrate = parseInt(data.split("~ ")[1]);
+          break;
+        case 14:
+          pokemon.ability = data.split("~ ").slice(1)[0].split("/");
+          break;
+        case 17:
+          pokemon.hiddenability = data.split("~ ").slice(1)[0].split("/");
+          break;
+        case 20:
+          pokemon.spawntime = data.split("~ ").slice(1)[0].split("/");
+          break;
+        case 23:
+          let lvl = data.split("~ ").slice(1)[0].split("-");
+          pokemon.levelrange = {
+            low: parseFloat(lvl[0]),
+            high: parseFloat(lvl[1])
+          };
+          break;
+        case 26:
+          pokemon.spawnlocation = data.split("~ ").slice(1)[0].split("/");
+          break;
+        case 29:
+          let genStr = data.split("~ ").slice(1)[0].split(", ");
+          if (genStr[0] == 'Genderless') {
+            pokemon.gender = {
+              male: 0,
+              female: 0
+            };
+          } else {
+            pokemon.gender = {
+              male: parseFloat(genStr[0]),
+              female: parseFloat(genStr[1]),
+            };
+          }
+
+          break;
+        case 32:
+          pokemon.evyield = data.split("~ ").slice(1).map((item) => {
+            let vals = item.split(" ");
+            return {
+              type: vals[1],
+              amount: parseInt(vals[0])
+            };
+          });
+          break;
+        case 35:
+          pokemon.mount = data.split("~ ").slice(1, 2);
+          break;
+        case 38:
+          pokemon.egggroup = data.split("~ ").slice(1)[0].split("/").map((item) => {return item.replace(" (Egg Group)", "");});
+          break;
+        case 41:
+          let vals = data.split("~ ").slice(1)[0].split("%");
+          let behs = [];
+          for (let a = 0; a < vals.length - 1; a++) {
+            let tmp = vals[a].split(" ");
+            let beh = {
+              type: tmp[0],
+              chance: parseInt(tmp[1])
+            };
+            behs.push(beh);
+          }
+          pokemon.behavior = behs;
+          break;
+        default:
+          break;
+      }
+    }
+    console.log(pokemon);
 
     // Success message
     msg = "Pixelmon page crawled successfully for " + pixelmons[i].name;
