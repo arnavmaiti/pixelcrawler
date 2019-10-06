@@ -1,6 +1,13 @@
 const rp = require('request-promise');
 const cheerio = require('cheerio');
-const chalk = require('chalk')
+const chalk = require('chalk');
+const neo4j = require('neo4j-driver').v1;
+
+// Neo4j
+const uri = "bolt://localhost:7687";
+const user = "neo4j";
+const password = "admin";
+const driver = neo4j.driver(uri, neo4j.auth.basic(user, password));
 
 // Website urls
 const pixelmonWiki = "https://pixelmonmod.com"
@@ -32,6 +39,13 @@ async function doRequests(socket) {
   let response;
   let $;
   let msg;
+  let session;
+
+  // Remove existing nodes and relations.
+  session = driver.session();
+  response = await session.run('MATCH (n) DETACH DELETE n');
+  session.close();
+
   // Initial call to get the list of available pixelmons
   response = await rp(availablePokes);
   // Get the pixelmon list to the array.
@@ -62,7 +76,7 @@ async function doRequests(socket) {
     "message": msg
   });
   // Now run through each of the pixelmon page the parse them to get the details.
-  for (var i = 620; i < 622; i++) {
+  for (var i = 0; i < pixelmons.length; i++) {
     response = await rp(pixelmons[i].link);
     $ = cheerio.load(response);
     var pokemon = {};
@@ -92,17 +106,17 @@ async function doRequests(socket) {
           pokemon.hiddenability = data.split("~ ").slice(1)[0].split("/");
           break;
         case 20:
-          pokemon.spawntime = data.split("~ ").slice(1)[0].split("/");
+          pokemon.spawntime = (data.split("~ ").slice(1)[0] ? data.split("~ ").slice(1)[0].split("/") : "None");
           break;
         case 23:
-          let lvl = data.split("~ ").slice(1)[0].split("-");
+          let lvl = (data.split("~ ").slice(1)[0] ? data.split("~ ").slice(1)[0].split("-") : {low: '0', high: '0'});
           pokemon.levelrange = {
             low: parseFloat(lvl[0]),
             high: parseFloat(lvl[1])
           };
           break;
         case 26:
-          pokemon.spawnlocation = data.split("~ ").slice(1)[0].split("/");
+          pokemon.spawnlocation = (data.split("~ ").slice(1)[0] ? data.split("~ ").slice(1)[0].split("/") : "None");
           break;
         case 29:
           let genStr = data.split("~ ").slice(1)[0].split(", ");
@@ -151,7 +165,33 @@ async function doRequests(socket) {
           break;
       }
     }
-    console.log(pokemon);
+
+    // Add the poke to the db.
+    session = driver.session();
+    response = await session.run(
+      'CREATE (a:Pixelmon {name: $name, id: $id}) RETURN a',
+      {name: pokemon.name, id: pokemon.id}
+    );
+    session.close();
+    // For each of abiliies
+    for (var b = 0; b < pokemon.ability.length; b++) {
+      session = driver.session();
+      response = await session.run(
+        'MATCH (a:Pixelmon {id: $id}) MERGE (b:Ability {name: $name}) MERGE (a) - [r:ABILITY] -> (b) RETURN a',
+        {id: pokemon.id, name: pokemon.ability[b]}
+      );
+      session.close();
+    }
+
+    // For each of hidden ability
+    for (var b = 0; b < pokemon.hiddenability.length; b++) {
+      session = driver.session();
+      response = await session.run(
+        'MATCH (a:Pixelmon {id: $id}) MERGE (b:Ability {name: $name}) MERGE (a) - [r:HIDDEN_ABILITY] -> (b) RETURN a',
+        {id: pokemon.id, name: pokemon.hiddenability[b]}
+      );
+      session.close();
+    }
 
     // Success message
     msg = "Pixelmon page crawled successfully for " + pixelmons[i].name;
@@ -174,6 +214,7 @@ async function doRequests(socket) {
   });
   status = statuses[1];
   lastRunTime = Date.now();
+  driver.close();
 }
 
 function handleError(err, msg) {
