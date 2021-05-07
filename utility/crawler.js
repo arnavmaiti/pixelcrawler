@@ -77,6 +77,9 @@ async function doRequests(socket) {
   });
   // Now run through each of the pixelmon page the parse them to get the details.
   for (var i = 0; i < pixelmons.length; i++) {
+    if (pixelmons[i].name == "-") {
+      continue;
+    }
     response = await rp(pixelmons[i].link);
     $ = cheerio.load(response);
     var pokemon = {};
@@ -94,32 +97,32 @@ async function doRequests(socket) {
           pokemon.id = parseInt(data.replace("~", ""));
           break;
         case 8:
-          pokemon.type = data.split("~ ");
+          pokemon.type = data.split("~");
           break;
         case 11:
-          pokemon.catchrate = parseInt(data.split("~ ")[1]);
+          pokemon.catchrate = parseInt(data.split("~")[1]);
           break;
         case 14:
-          pokemon.ability = data.split("~ ").slice(1)[0].split("/");
+          pokemon.ability = data.split("~").slice(1)[0].split("/");
           break;
         case 17:
-          pokemon.hiddenability = data.split("~ ").slice(1)[0].split("/");
+          pokemon.hiddenability = data.split("~").slice(1)[0].split("/");
           break;
         case 20:
-          pokemon.spawntime = (data.split("~ ").slice(1)[0] ? data.split("~ ").slice(1)[0].split("/") : "None");
+          pokemon.spawntime = (data.split("~").slice(1)[0] ? data.split("~").slice(1)[0].split("/") : "None");
           break;
         case 23:
-          let lvl = (data.split("~ ").slice(1)[0] ? data.split("~ ").slice(1)[0].split("-") : {low: '0', high: '0'});
+          let lvl = (data.split("~").slice(1)[0] ? data.split("~").slice(1)[0].split("-") : {low: '0', high: '0'});
           pokemon.levelrange = {
             low: parseFloat(lvl[0]),
             high: parseFloat(lvl[1])
           };
           break;
         case 26:
-          pokemon.spawnlocation = (data.split("~ ").slice(1)[0] ? data.split("~ ").slice(1)[0].split("/") : "None");
+          pokemon.spawnlocation = (data.split("~").slice(1)[0] ? data.split("~").slice(1)[0].split("/") : "None");
           break;
         case 29:
-          let genStr = data.split("~ ").slice(1)[0].split(", ");
+          let genStr = data.split("~").slice(1)[0].split(", ");
           if (genStr[0] == 'Genderless') {
             pokemon.gender = {
               male: 0,
@@ -134,7 +137,7 @@ async function doRequests(socket) {
 
           break;
         case 32:
-          pokemon.evyield = data.split("~ ").slice(1).map((item) => {
+          pokemon.evyield = data.split("~").slice(1).map((item) => {
             let vals = item.split(" ");
             return {
               type: vals[1],
@@ -143,13 +146,13 @@ async function doRequests(socket) {
           });
           break;
         case 35:
-          pokemon.mount = data.split("~ ").slice(1, 2);
+          pokemon.mount = data.split("~").slice(1, 2);
           break;
         case 38:
-          pokemon.egggroup = data.split("~ ").slice(1)[0].split("/").map((item) => {return item.replace(" (Egg Group)", "");});
+          pokemon.egggroup = data.split("~").slice(1)[0].split("/").map((item) => {return item.replace(" (Egg Group)", "");});
           break;
         case 41:
-          let vals = data.split("~ ").slice(1)[0].split("%");
+          let vals = data.split("~").slice(1)[0].split("%");
           let behs = [];
           for (let a = 0; a < vals.length - 1; a++) {
             let tmp = vals[a].split(" ");
@@ -169,8 +172,8 @@ async function doRequests(socket) {
     // Add the poke to the db.
     session = driver.session();
     response = await session.run(
-      'CREATE (a:Pixelmon {name: $name, id: $id}) RETURN a',
-      {name: pokemon.name, id: pokemon.id}
+      'CREATE (a:Pixelmon {name: $name, id: $id, data: $data}) RETURN a',
+      {name: pokemon.name, id: pokemon.id, data: JSON.stringify(pokemon)}
     );
     session.close();
     // For each of abiliies
@@ -192,9 +195,18 @@ async function doRequests(socket) {
       );
       session.close();
     }
+    // For each of the type
+    for (var b = 0; b < pokemon.type.length; b++) {
+      session = driver.session();
+      response = await session.run(
+        'MATCH (a:Pixelmon {id: $id}) MERGE (b:Type {name: $name}) MERGE (a) - [r:TYPE] -> (b) RETURN a',
+        {id: pokemon.id, name: pokemon.type[b]}
+      );
+      session.close();
+    }
 
     // Success message
-    msg = "Pixelmon page crawled successfully for " + pixelmons[i].name;
+    msg = "Pixelmon page crawled successfully for (" + (i + 1) +") " + pixelmons[i].name;
     messages.push(msg);
     lastMessage = msg;
     success("Crawling Success", msg);
@@ -217,13 +229,14 @@ async function doRequests(socket) {
   driver.close();
 }
 
-function handleError(err, msg) {
+function handleError(err, msg, socket) {
   status = statuses[2];
   lastRunTime = Date.now();
   lastMessage = msg;
   messages.push(msg);
   error("Crawling Error", msg);
   error("Reason", err.message);
+  error("Stack", err.stack);
   socket.emit('crawl reply', {
     "type": "error",
     "message": msg
